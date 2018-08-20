@@ -3,7 +3,7 @@ import cors from 'cors'
 import http from 'http'
 import Socket from 'socket.io'
 import find from 'lodash/find'
-import { PORT } from './config'
+import { PORT, HOST } from './config'
 import IPFS from './ipfs'
 
 const app = express()
@@ -52,7 +52,7 @@ const runApp = () => {
 }
 
 ipfs.once('ready', () => {
-  server.listen(PORT, () => {
+  server.listen(PORT, HOST, () => {
     console.log('App listening on port ' + PORT);
     runApp()
   });
