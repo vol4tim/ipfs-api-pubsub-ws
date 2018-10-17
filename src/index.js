@@ -1,52 +1,57 @@
 import express from 'express'
 import cors from 'cors'
-import http from 'http'
 import Socket from 'socket.io'
-import find from 'lodash/find'
+import _indexOf from 'lodash/indexOf'
 import { PORT, HOST } from './config'
 import IPFS from './ipfs'
+import createServer from './server'
 
 const app = express()
-const server = http.Server(app);
+const server = createServer(app)
 const io = Socket(server)
 app.use(cors())
 const ipfs = IPFS()
 
-const chanels = []
+const topics = []
 
-const subscribeOld = (chanel) => {
-  ipfs.pubsub.ls((e, chanels) => {
-    if (!find(chanels, (item) => item === chanel)) {
-      ipfs.pubsub.subscribe(chanel, (msg) => {
-        const data = Buffer.from(msg.data).toString('utf8');
-        io.emit(chanel, data)
-      })
-    }
-  })
-}
-
-const subscribe = (chanel) => {
-  if (!find(chanels, (item) => item === chanel)) {
-    chanels.push(chanel)
-    ipfs.pubsub.subscribe(chanel, (msg) => {
-      const data = Buffer.from(msg.data).toString('utf8');
-      io.emit(chanel, data)
+const subscribe = (topic) => {
+  return new Promise((resolve) => {
+    ipfs.pubsub.ls((e, list) => {
+      const isSys = _indexOf(list, topic) >= 0
+      const isApp = _indexOf(topics, topic) >= 0
+      if (!isApp) {
+        console.log('add app', topic);
+        topics.push(topic)
+      }
+      if (!isApp || !isSys) {
+        console.log('add sys', topic);
+        ipfs.pubsub.subscribe(topic, (msg) => {
+          const data = Buffer.from(msg.data).toString('utf8');
+          io.emit(topic, data)
+        })
+      }
+      resolve(true)
     })
-  }
+  })
 }
 
 const runApp = () => {
   io.on('connection', (socket) => {
-    socket.on('chanel', (chanel) => {
-      subscribe(chanel)
-      socket.on(chanel, (msg) => {
-        msg = Buffer.from(JSON.parse(msg).data);
-        ipfs.pubsub.publish(chanel, msg, (err) => {
-          if (err) {
-            console.log(err)
-          }
+    socket.on('chanel', (topic) => {
+      subscribe(topic)
+        .then(() => {
+          socket.on(topic, (msg) => {
+            msg = Buffer.from(JSON.parse(msg).data);
+            subscribe(topic)
+              .then(() => {
+                ipfs.pubsub.publish(topic, msg, (err) => {
+                  if (err) {
+                    console.log(err)
+                  }
+                })
+              })
+          });
         })
-      });
     });
   });
 }
